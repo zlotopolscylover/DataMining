@@ -1,0 +1,172 @@
+---
+title: "Projekt 2"
+author: "And?elika Zalewska"
+date: "6 czerwca 2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Dokona?am podzia?u zbioru "train_projekt2.csv" na cz??? treningow? (80% danych) i testow?(20% danych), aby m?c dokona? selekcji predyktor?w na zbiorze ucz?cym, kt?rego nie b?dzie widzia?a moja pr?ba testowa. Celem takiego post?powania b?dzie sprawdzenie poprawno?ci przetestowanych przeze mnie metod klasyfikacji za pomoc? m.in. wykonanych tablic kontyngencji i policzenia b??du klasyfikacji.
+
+
+```{r,results=FALSE}
+train <- read.csv("h:/Windows7/Desktop/DATA MINING/train_projekt2.csv")
+test <- read.csv("h:/Windows7/Desktop/DATA MINING/test_projekt2.csv")
+df <- train[sample(1:nrow(train)),]
+df_test <- df[1:400,]
+df_treningowy <- df[401:nrow(df),]
+
+```
+
+
+Zanim przetestowa?am metody klasyfikacyjne, dokona?am dw?ch metod selekcji zmiennych. Pierwsza z nich pochodzi z pakietu Boruta, a druga z pakietu rmcfs.
+
+
+```{r,results=FALSE,eval=FALSE}
+#pierwsza metoda selekcji
+library(Boruta)
+boruta.fs <- Boruta(Y~., data = df_treningowy, doTrace=2)
+x <- boruta.fs$finalDecision
+x[which(x=="Confirmed")]
+```
+
+```{r, results=FALSE,eval=FALSE}
+#druga metoda selekcji
+library(rmcfs)
+mcfs.fs <- mcfs(Y~., data = df_treningowy, cutoffPermutations = 3)
+mcfs.fs$RI 
+plot(mcfs.fs, type="features", size=21)
+graf <- build.idgraph(mcfs.fs)
+plot(graf, label_dist = 1)
+```
+
+
+
+Oby dwie metody zadzia?a?y podobnie. Pierwsza z nich wyselekcjonowa?a 19 predyktor?w, a druga 18 predyktor?w. Wyb?r zmiennych przez te dwie metody praktycznie si? nie r??ni?. Niemniej jednak postanowi?am przetestowa? kilka metod klasyfikacji dobieraj?c predyktory zgodnie z pierwsz? metod? selekcji, a nast?pnie zgodnie z drug?. Po czym na ka?dej z metod dokona?am predykcji na zbiorze testowym i sprawdzi?am, jak dobrze uzyskana metoda dzia?a na zbiorze testowym. 
+
+Poni?ej przedstawiam wszystkie metody klasyfikacji jakie przetestowa?am, wraz z ocen? jako?ci tych klasyfikator?w i ocen? poprawno?ci klasyfikacji na zbiorze testowym.
+
+```{r,results=FALSE,eval=FALSE}
+#pakiet randomForest
+#predyktory wybrane metod? selekcji z pakietu Boruta
+library(randomForest)
+las <- randomForest(factor(Y)~V29 + V49 +V65 + V106 + V129 + V154 +V242 + V282 +V319 +V337 +V339 +V379 +V434
+                    +V443 +V452+V454 +V473+V476+V494,data=df_treningowy, ntree=500)
+#policzy?am miar? jako?ci klasyfikacji AUC dla tego modelu
+library(ROCR)
+prawd.post <- predict(las,newdata=df_test,type="prob")[,2]
+pred <- prediction(prawd.post, df_test$Y)
+auc.perf <-  performance(pred, measure = "auc")
+auc.perf@y.values
+#0.9532678
+pred_rF <- predict(las,newdata = df_test,type="response")
+#tablica kontyngencji
+tabela_fF <- table(df_test$Y, pred_rF)
+sum(diag(tabela_fF))/nrow(df_test)
+#0.8825
+```
+
+```{r,results=FALSE,eval=FALSE}
+#pakiet randomForest
+#predyktory wybrane metod? selekcji z pakietu rmcfs
+library(randomForest)
+las1 <- randomForest(factor(Y)~V29 + V49 +V65 + V106 + V129 +V242 + V282 +V319 +V337 +V339 +V379 +V434+V128+V343
+                     +V443 +V473+V476+V494,data=df_treningowy, ntree=500,method="class")
+#policzy?am miar? jako?ci klasyfikacji AUC dla tego modelu
+library(ROCR)
+prawd.post <- predict(las1,newdata=df_test,type="prob")[,2]
+pred <- prediction(prawd.post, df_test$Y)
+auc.perf <-  performance(pred, measure = "auc")
+auc.perf@y.values
+#0.9474132
+pred_rF <- predict(las1,newdata = df_test,type="response")
+#tablica kontyngencji
+tabela_fF <- table(df_test$Y, pred_rF)
+sum(diag(tabela_fF))/nrow(df_test)
+#0.885
+```
+
+```{r,results=FALSE,eval=FALSE}
+#pakiet rpart
+tree <- rpart(as.factor(Y)~V29 + V49 +V65 + V106 + V129 + V154 +V242 + V282 +V319 +V337 +V339 +V379 +V434
+              +V443 +V452+V454 +V473+V476+V494, data=df_treningowy,cp=0.01, minsplit=3,method="class")
+par(xpd=TRUE)
+plot(tree)
+text(tree, use.n=TRUE)
+#policzy?am miar? jako?ci klasyfikacji AUC dla tego modelu
+library(ROCR)
+prawd.post <- predict(tree,newdata=df_test)[,2]
+pred <- prediction(prawd.post, df_test$Y)
+auc.perf <-  performance(pred, measure = "auc")
+auc.perf@y.values
+#0.8681828
+#predykcja na zbiorze testowym 
+pred.bag <- predict(tree, df_test, type="class")
+#tablica kontyngencji
+tabela_fF <- table(df_test$Y, pred.bag)
+#poprawno?c klasyfikacji na zbiorze testowym
+sum(diag(tabela_fF))/nrow(df_test)
+#0.83
+
+```
+
+```{r,results=FALSE,eval=FALSE}
+#pakiet adabag - metoda bagging
+#predyktory wybrane metod? selekcji z pakietu Boruta
+df$Y <- as.factor(df$Y)
+library(adabag)
+bag <- bagging(Y~V29 + V49 +V65 + V106 + V129 + V154 +V242 + V282 +V319 +V337 +V339 +V379 +V434
+               +V443 +V452+V454 +V473+V476+V494, data=df_treningowy)
+#policzy?am miar? jako?ci klasyfikacji AUC dla tego modelu
+pred.bag <- predict(bag, df_test)
+prawd.post <- pred.bag$prob[,2]
+pred <- prediction(prawd.post, df_test$Y)
+auc.perf <-  performance(pred, measure = "auc")
+auc.perf@y.values
+# 0.9022803
+#poprawno?c klasyfikacji na zbiorze testowym
+1 - pred.bag$error
+#0.8225
+```
+
+```{r,results=FALSE,eval=FALSE}
+#pakiet adabag - metoda boosting
+#predyktory wybrane metod? selekcji z pakietu Boruta
+ada <- boosting(Y~V29 + V49 +V65 + V106 + V129 + V154 +V242 + V282 +V319 +V337 +V339 +V379 +V434
+                +V443 +V452+V454 +V473+V476+V494, data=df_treningowy)
+#policzy?am miar? jako?ci klasyfikacji AUC dla tego modelu
+pred.bag <- predict(ada, df_test)
+prawd.post <- pred.bag$prob[,2]
+pred <- prediction(prawd.post, df_test$Y)
+auc.perf <-  performance(pred, measure = "auc")
+auc.perf@y.values
+# 0.9450945
+#poprawno?c klasyfikacji na zbiorze testowym
+1 - pred.bag$error
+#0.8675
+```
+
+
+```{r,results=FALSE,eval=FALSE}
+#pakiet earth - metoda MARS 
+install.packages("earth")
+library(earth)
+model <-  earth(Y~V29 + V49 +V65 + V106 + V129 + V154 +V242 + V282 +V319 +V337 +V339 +V379 +V434
+                +V443 +V452+V454 +V473+V476+V494,data=df_treningowy,degree=2,penalty=0,minspan=0)
+pred_mod <- predict(model,newdata = df_test)
+# AUC
+pred <- prediction(pred_mod, df_test$Y)
+auc.perf <-  performance(pred, measure = "auc")
+auc.perf@y.values
+#0.8349335
+#poprawno?c klasyfikacji na zbiorze testowym
+pred.bag <- predict(model, df_test, type="class")
+tabela_fF <- table(df_test$Y, pred.bag)
+sum(diag(tabela_fF))/nrow(df_test)
+# 0.765
+```
+
+Ostatecznie postanowi?am wybra? metod? las?w losowych (pakiet randomForest), gdy? ten klasyfikator mia? najlepsz? miar? jako?ci AUC oraz najlepiej poradzi? soboie z klasyfikacj? zbioru testowego.
